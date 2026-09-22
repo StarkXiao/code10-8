@@ -68,7 +68,7 @@ try {
     "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_prisma%'",
   );
   if (Array.isArray(tables) && tables.length > 0) {
-    console.log(`[migrate] 数据库已有 ${tables.length} 张表，跳过建表（如需重建请先删除数据文件）`);
+    console.log(`[migrate] 数据库已有 ${tables.length} 张表，跳过全量建表`);
   } else {
     const statements = splitStatements(sql);
     for (const statement of statements) {
@@ -76,6 +76,7 @@ try {
     }
     console.log(`[migrate] 已执行 ${statements.length} 条建表语句`);
   }
+  await applyIncrementalPatches(prisma);
   const finalTables = await prisma.$queryRawUnsafe(
     "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_prisma%' ORDER BY name",
   );
@@ -84,6 +85,72 @@ try {
   await prisma.$disconnect();
 }
 console.log('[migrate] done');
+
+/**
+ * 增量补丁：老库平滑升级用，每条都必须幂等。
+ * 新库由上面的全量建表 SQL 直接建好，这里的语句会全部跳过。
+ * 顺序：先加列，再建表，最后建索引/外键。
+ */
+async function applyIncrementalPatches(prisma) {
+  const columns = async (table) => {
+    const rows = await prisma.$queryRawUnsafe(`PRAGMA table_info("${table}")`);
+    return new Set((rows ?? []).map((r) => r.name));
+  };
+  const hasTable = async (name) => {
+    const rows = await prisma.$queryRawUnsafe(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name = ?",
+      name,
+    );
+    return Array.isArray(rows) && rows.length > 0;
+  };
+  const hasIndex = async (name) => {
+    const rows = await prisma.$queryRawUnsafe(
+      "SELECT name FROM sqlite_master WHERE type='index' AND name = ?",
+      name,
+    );
+    return Array.isArray(rows) && rows.length > 0;
+  };
+  const run = async (statement) => {
+    await prisma.$executeRawUnsafe(statement);
+    console.log(`[migrate] 补丁已执行：${statement.slice(0, 80).replace(/\s+/g, ' ')}…`);
+  };
+
+  // 0002：只读分享升级为限时协作
+  const shareCols = await columns('share_links');
+  if (!shareCols.has('mode')) {
+    await run('ALTER TABLE "share_links" ADD COLUMN "mode" TEXT NOT NULL DEFAULT \'view\'');
+  }
+  if (!(await hasTable('repair_submissions'))) {
+    await run(`CREATE TABLE "repair_submissions" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "share_link_id" TEXT NOT NULL,
+    "wardrobe_id" TEXT NOT NULL,
+    "garment_id" TEXT NOT NULL,
+    "damage_event_id" TEXT,
+    "status" TEXT NOT NULL DEFAULT 'pending',
+    "collaborator" TEXT NOT NULL,
+    "contact" TEXT,
+    "payload" JSONB NOT NULL,
+    "ip" TEXT,
+    "user_agent" TEXT,
+    "submitted_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "reviewed_by" TEXT,
+    "reviewed_at" DATETIME,
+    "review_note" TEXT,
+    "repair_id" TEXT,
+    "created_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" DATETIME NOT NULL,
+    CONSTRAINT "repair_submissions_share_link_id_fkey" FOREIGN KEY ("share_link_id") REFERENCES "share_links" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT "repair_submissions_wardrobe_id_fkey" FOREIGN KEY ("wardrobe_id") REFERENCES "wardrobes" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+)`);
+  }
+  if (!(await hasIndex('repair_submissions_wardrobe_id_status_idx'))) {
+    await run('CREATE INDEX "repair_submissions_wardrobe_id_status_idx" ON "repair_submissions"("wardrobe_id", "status")');
+  }
+  if (!(await hasIndex('repair_submissions_share_link_id_idx'))) {
+    await run('CREATE INDEX "repair_submissions_share_link_id_idx" ON "repair_submissions"("share_link_id")');
+  }
+}
 
 /** 把 Prisma 生成的 SQL 拆成可单独执行的语句（去掉注释与事务包裹） */
 function splitStatements(script) {

@@ -405,7 +405,89 @@ export const reminderActionSchema = z.object({
 export const shareLinkSchema = z.object({
   scope: z.enum(['garment', 'wardrobe']).default('garment'),
   garmentIds: z.array(z.string().min(1)).default([]),
+  mode: z.enum(['view', 'collab']).default('view'),
   expiresInHours: z.number().int().min(1).max(24 * 365).optional(),
+});
+
+/**
+ * 师傅凭协作链接回填的修补单。
+ * 刻意不暴露衣橱内部主键与库存：针法/破损类型用字典 code，
+ * 用料为自由文本快照，由主人在审批时决定如何并入布料库存。
+ */
+export const collabMaterialSchema = z.object({
+  description: z.string().min(1, '请填写用料说明').max(120),
+  amount: z.number().positive('用量必须大于 0').max(100_000),
+  unit: z.enum(INVENTORY_UNITS),
+  unitCost: z.number().min(0).max(1_000_000).optional(),
+});
+
+export const collabSubmissionSchema = z
+  .object({
+    garmentId: z.string().min(1),
+    damageEventId: z.string().min(1).nullable().optional(),
+    collaborator: z.string().min(1, '请填写您的称呼或店名').max(40),
+    contact: z.string().max(60).nullable().optional(),
+    // 师傅找不到对应破损记录时，可以描述一条新破损
+    newDamage: z
+      .object({
+        damageTypeCode: z.string().min(1),
+        severity: z.enum(SEVERITIES),
+        description: z.string().min(1, '请描述破损情况').max(1000),
+        partCode: z.string().max(40).nullable().optional(),
+      })
+      .nullable()
+      .optional(),
+    stitchCode: z.string().min(1).max(40),
+    stitchNameFallback: z.string().max(40).nullable().optional(),
+    stitchSecondaryCodes: z.array(z.string().min(1).max(40)).max(10).default([]),
+    threadType: z.string().max(60).nullable().optional(),
+    threadColor: z.string().max(30).nullable().optional(),
+    durationMinutes: z.number().int().min(0).max(10_000).nullable().optional(),
+    laborCost: z.number().min(0).max(1_000_000),
+    shopName: z.string().max(60).nullable().optional(),
+    startedAt: isoDate.nullable().optional(),
+    finishedAt: notTooFarInFuture(),
+    materials: z.array(collabMaterialSchema).max(20).default([]),
+    materialTotalCost: z.number().min(0).max(1_000_000).default(0),
+    reuseOriginalFabric: z.boolean().default(false),
+    note: z.string().max(1000).nullable().optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (!value.damageEventId && !value.newDamage) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['damageEventId'],
+        message: '请选择一条破损记录，或描述本次修补的破损情况',
+      });
+    }
+    if (value.startedAt && value.finishedAt < value.startedAt) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['finishedAt'],
+        message: '完成日期不能早于开始日期',
+      });
+    }
+  });
+
+/** 主人审批回填单：针法必须映射到衣橱针法库；用料逐条决定库存处理方式 */
+export const submissionMaterialDecisionSchema = z.object({
+  /** 对应师傅 payload.materials 的下标 */
+  index: z.number().int().min(0).max(19),
+  action: z.enum(['inventory', 'shop_supplied', 'skip']),
+  /** action=inventory 时使用的布料来源 */
+  fabricSourceId: z.string().min(1).optional(),
+});
+
+export const submissionApproveSchema = z.object({
+  damageEventId: z.string().min(1, '请确认这条修补对应哪条破损记录').optional(),
+  stitchId: z.string().min(1, '请选择针法（师傅填写的针法不在针法库时可在此修正）'),
+  stitchSecondaryIds: z.array(z.string().min(1)).max(10).default([]),
+  materialDecisions: z.array(submissionMaterialDecisionSchema).max(20).default([]),
+  note: z.string().max(1000).nullable().optional(),
+});
+
+export const submissionRejectSchema = z.object({
+  reason: z.string().min(1, '退回时必须填写原因，师傅会看到这条说明').max(500),
 });
 
 export const stitchCreateSchema = z.object({

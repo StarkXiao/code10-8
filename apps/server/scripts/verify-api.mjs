@@ -179,6 +179,70 @@ const shareLink = await call('/share-links', {
   body: { scope: 'garment', garmentIds: [garment.id], expiresInHours: 24 },
 });
 
+/* ---------- 限时协作回填链路（师傅匿名 → 主人确认） ---------- */
+
+async function callPublic(path, { method = 'GET', body, expect = 200 } = {}) {
+  const headers = {};
+  let payload;
+  if (body !== undefined) {
+    headers['content-type'] = 'application/json';
+    payload = JSON.stringify(body);
+  }
+  const response = await fetch(`${BASE}/api${path}`, { method, headers, body: payload });
+  const json = await response.json().catch(() => null);
+  const okStatus = response.status === expect;
+  // 预期内的错误状态码（如只读链接 403）也算通过：状态码符合预期且有标准错误信封
+  const okShape = json !== null && (json.ok === true || (expect !== 200 && json.ok === false && json.error?.code));
+  if (okStatus && okShape) {
+    passed.push(`${method} ${path} · 协作回填`);
+  } else {
+    failures.push({
+      endpoint: `${method} ${path}`,
+      status: response.status,
+      expected: expect,
+      code: json?.error?.code,
+      message: json?.error?.message ?? '(无响应体)',
+    });
+  }
+  return json?.data;
+}
+
+const collabLink = await call('/share-links', {
+  method: 'POST',
+  expect: 201,
+  body: { scope: 'garment', mode: 'collab', garmentIds: [garment.id], expiresInHours: 24 },
+  note: '生成协作链接',
+});
+await callPublic(`/share/${collabLink.token}/dictionary`, { note: '协作字典' });
+const collabSubmission = await callPublic(`/share/${collabLink.token}/submissions`, {
+  method: 'POST',
+  expect: 201,
+  body: {
+    garmentId: garment.id,
+    collaborator: '验收脚本师傅',
+    stitchCode: 'backstitch',
+    laborCost: 40,
+    materialTotalCost: 5,
+    finishedAt: daysAgo(0),
+    materials: [{ description: '验收用线', amount: 1, unit: 'piece' }],
+    newDamage: { damageTypeCode: 'hole', severity: 'minor', description: '验收脚本：肘部小洞' },
+  },
+});
+await callPublic(`/share/${collabLink.token}/submissions`, { note: '师傅查询回填状态' });
+// 只读链接禁止写
+await callPublic(`/share/${shareLink.token}/dictionary`, { expect: 403 });
+await call(`/share-links/submissions/pending`, { note: '主人看待确认列表' });
+const collabDetail = await call(`/share-links/submissions/${collabSubmission.id}`, { note: '回填确认页候选数据' });
+await call(`/share-links/submissions/${collabSubmission.id}/approve`, {
+  method: 'POST',
+  body: {
+    stitchId: collabDetail.candidates.stitches.find((s) => s.code === 'backstitch').id,
+    materialDecisions: [{ index: 0, action: 'shop_supplied' }],
+    note: '验收脚本确认并入',
+  },
+  note: '确认并入档案',
+});
+
 const reminders = (await call('/reminders?scope=all&limit=50')).items;
 const openReminder = reminders.find((r) => ['pending', 'notified'].includes(r.status));
 if (openReminder) {
@@ -237,6 +301,7 @@ const readEndpoints = [
   [`/analytics/garments/${garment.id}/health`, '单件健康分'],
   ['/analytics/wear-trend?months=12', '穿着趋势'],
   ['/share-links', '分享链接列表'],
+  ['/share-links/submissions?status=approved', '回填单列表'],
   [`/share/${shareLink.token}`, '分享（访客视角）'],
   [`/share/${shareLink.token}/garment/${garment.id}`, '分享衣物（访客视角）'],
 ];
@@ -365,6 +430,7 @@ if (openAfterScan.length > 0) {
 }
 
 await call(`/share-links/${shareLink.id}`, { method: 'DELETE', note: '撤销分享链接' });
+await call(`/share-links/${collabLink.id}`, { method: 'DELETE', note: '撤销协作链接' });
 await call('/wear-logs/batch', {
   method: 'POST',
   body: { logs: [{ garmentId: garment.id, wornOn: daysAgo(1), clientOpId: 'verify-op-2' }] },

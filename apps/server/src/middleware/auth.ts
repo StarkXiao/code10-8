@@ -60,9 +60,17 @@ export function requireShareToken(req: Request, _res: Response, next: NextFuncti
       wardrobeId: link.wardrobeId,
       scope: link.scope,
       garmentIds: Array.isArray(link.garmentIds) ? (link.garmentIds as string[]) : [],
+      mode: link.mode,
     };
     next();
   })().catch(next);
+}
+
+/** 协作写操作：链接必须是 collab 模式且在有效期内 */
+export function requireCollabShare(req: Request, _res: Response, next: NextFunction): void {
+  if (!req.share) throw new HttpError('AUTH_REQUIRED', '分享链接无效');
+  if (req.share.mode !== 'collab') throw new HttpError('FORBIDDEN', '这是只读链接，不能回填修补记录');
+  next();
 }
 
 export function assertGarmentInShare(share: NonNullable<Request['share']>, garmentId: string): void {

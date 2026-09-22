@@ -18,6 +18,7 @@ export const ErrorCodes = {
   REPAIR_CHANGE_REQUIRED: 422,
   UPLOAD_TYPE_NOT_ALLOWED: 415,
   UPLOAD_TOO_LARGE: 413,
+  RATE_LIMITED: 429,
   INTERNAL: 500,
 } as const;
 

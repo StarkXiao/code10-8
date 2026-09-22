@@ -18,6 +18,7 @@ const routes: RouteRecordRaw[] = [
   { path: '/reminders', name: 'reminders', component: () => import('../views/RemindersView.vue') },
   { path: '/analytics', name: 'analytics', component: () => import('../views/AnalyticsView.vue') },
   { path: '/settings', name: 'settings', component: () => import('../views/SettingsView.vue') },
+  { path: '/share/submissions/:id', name: 'submission-review', component: () => import('../views/SubmissionReviewView.vue') },
   { path: '/share/:token', name: 'share', component: () => import('../views/SharePublicView.vue'), meta: { public: true } },
   { path: '/:pathMatch(.*)*', redirect: '/' },
 ];

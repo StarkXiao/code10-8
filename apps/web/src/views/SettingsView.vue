@@ -9,17 +9,21 @@ import {
   type ReminderChannel,
   type ReminderTriggerKind,
 } from '@gml/shared';
+import { useRoute, useRouter } from 'vue-router';
 import { getToken, messageOf } from '../api/client';
 import { authApi, garmentApi, reminderApi, shareApi, wardrobeApi } from '../api';
 import { useSessionStore } from '../stores/session';
-import type { DictionaryResponse, GarmentListItem, ReminderRuleRow, ShareLinkRow } from '../types';
+import type { DictionaryResponse, GarmentListItem, ReminderRuleRow, ShareLinkRow, SubmissionSummary } from '../types';
 import EmptyState from '../components/EmptyState.vue';
 
+const route = useRoute();
+const router = useRouter();
 const session = useSessionStore();
-const tab = ref('account');
+const tab = ref(typeof route.query.tab === 'string' ? route.query.tab : 'account');
 const dict = ref<DictionaryResponse | null>(null);
 const rules = ref<ReminderRuleRow[]>([]);
 const links = ref<ShareLinkRow[]>([]);
+const pending = ref<SubmissionSummary[]>([]);
 const members = ref<Array<{ userId: string; displayName: string; email: string; role: string; isMe: boolean }>>([]);
 const logs = ref<Array<Record<string, unknown>>>([]);
 const garments = ref<GarmentListItem[]>([]);
@@ -34,7 +38,7 @@ const newRule = reactive({
   message: '换季前检查亚麻衣物的缝合处与前襟折痕',
   channel: 'inapp' as ReminderChannel,
 });
-const shareForm = reactive({ garmentIds: [] as string[], expiresInHours: 72 });
+const shareForm = reactive({ garmentIds: [] as string[], mode: 'view' as 'view' | 'collab', expiresInHours: 72 });
 
 const currentUserId = computed(() => session.user?.id ?? '');
 
@@ -45,7 +49,6 @@ onMounted(async () => {
   wardrobeForm.name = session.wardrobe?.name ?? '';
   await Promise.all([loadDictionary(), loadRules(), loadLinks(), loadMembers(), loadLogs(), loadGarments()]);
 });
-
 async function loadDictionary(): Promise<void> {
   dict.value = await wardrobeApi.dictionary();
 }
@@ -56,6 +59,11 @@ async function loadRules(): Promise<void> {
 
 async function loadLinks(): Promise<void> {
   links.value = (await shareApi.list()).links;
+  await loadPending();
+}
+
+async function loadPending(): Promise<void> {
+  pending.value = (await shareApi.pendingSubmissions()).items;
 }
 
 async function loadMembers(): Promise<void> {
@@ -149,12 +157,13 @@ async function createShareLink(): Promise<void> {
   try {
     const result = await shareApi.create({
       scope: 'garment',
+      mode: shareForm.mode,
       garmentIds: shareForm.garmentIds,
       expiresInHours: shareForm.expiresInHours,
     });
     try {
       await navigator.clipboard.writeText(result.url);
-      ElMessage.success('已生成只读链接并复制到剪贴板');
+      ElMessage.success(shareForm.mode === 'collab' ? '已生成协作链接并复制到剪贴板' : '已生成只读链接并复制到剪贴板');
     } catch {
       ElMessage.success(`链接：${result.url}`);
     }
@@ -338,9 +347,46 @@ async function importBackup(event: Event): Promise<void> {
       </el-tab-pane>
 
       <el-tab-pane label="分享" name="share">
+        <el-card v-if="pending.length > 0" shadow="never" style="max-width: 720px; margin-bottom: 12px">
+          <template #header>
+            <div style="display: flex; justify-content: space-between; align-items: center">
+              <span>师傅回填待确认（{{ pending.length }}）</span>
+              <el-tag type="warning">{{ pending.length }}</el-tag>
+            </div>
+          </template>
+          <div style="display: grid; gap: 8px">
+            <div
+              v-for="item in pending"
+              :key="item.id"
+              style="display: flex; justify-content: space-between; align-items: center; gap: 8px"
+            >
+              <div>
+                <b>{{ item.collaborator }}</b>
+                回填了 {{ item.garment.name }}（{{ item.garment.code }}）
+                <span class="muted">· {{ item.submittedAt.slice(0, 16).replace('T', ' ') }}</span>
+                <div class="muted" style="font-size: 12px">
+                  用料 {{ item.materialCount }} 项 · 工时 ¥{{ item.laborCost ?? 0 }} · 材料 ¥{{ item.materialTotalCost ?? 0 }}
+                </div>
+              </div>
+              <el-button type="primary" size="small" @click="router.push({ name: 'submission-review', params: { id: item.id } })">
+                去确认
+              </el-button>
+            </div>
+          </div>
+        </el-card>
+
         <el-card shadow="never" style="max-width: 720px">
-          <template #header>生成只读分享链接（给裁缝 / 干洗店 / 家人）</template>
+          <template #header>生成分享链接（给裁缝 / 干洗店 / 家人）</template>
           <el-form label-width="110px">
+            <el-form-item label="链接类型">
+              <el-radio-group v-model="shareForm.mode">
+                <el-radio value="view">只读档案</el-radio>
+                <el-radio value="collab">限时协作（师傅可回填用料与费用）</el-radio>
+              </el-radio-group>
+              <div class="field-hint">
+                协作链接里的师傅只能提交回填单，需你确认后才并入档案；过期或撤销后链接立即失效。
+              </div>
+            </el-form-item>
             <el-form-item label="衣物范围">
               <el-select v-model="shareForm.garmentIds" multiple filterable style="width: 100%" placeholder="选择要分享的衣物">
                 <el-option v-for="item in garments" :key="item.id" :value="item.id" :label="`${item.name}（${item.code}）`" />
@@ -356,6 +402,13 @@ async function importBackup(event: Event): Promise<void> {
           <el-divider />
           <EmptyState v-if="links.length === 0" title="还没有分享链接" />
           <el-table v-else :data="links" size="small">
+            <el-table-column label="类型" width="90">
+              <template #default="{ row }">
+                <el-tag size="small" :type="row.mode === 'collab' ? 'warning' : ''">
+                  {{ row.mode === 'collab' ? '协作' : '只读' }}
+                </el-tag>
+              </template>
+            </el-table-column>
             <el-table-column label="范围" width="110">
               <template #default="{ row }">
                 {{ row.scope === 'wardrobe' ? '整个衣橱' : `${row.garmentIds.length} 件衣物` }}
@@ -364,8 +417,14 @@ async function importBackup(event: Event): Promise<void> {
             <el-table-column label="过期时间" width="180">
               <template #default="{ row }">{{ String(row.expiresAt).slice(0, 16).replace('T', ' ') }}</template>
             </el-table-column>
-            <el-table-column label="访问次数" width="100" prop="accessCount" />
-            <el-table-column label="状态" width="100">
+            <el-table-column label="访问" width="80" prop="accessCount" />
+            <el-table-column label="待确认" width="80">
+              <template #default="{ row }">
+                <el-badge v-if="row.pendingSubmissions > 0" :value="row.pendingSubmissions" type="warning" />
+                <span v-else class="muted">0</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="状态" width="90">
               <template #default="{ row }">
                 <el-tag size="small" :type="row.expired ? 'info' : 'success'">{{ row.expired ? '已过期' : '有效' }}</el-tag>
               </template>

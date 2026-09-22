@@ -13,6 +13,7 @@ declare global {
         wardrobeId: string;
         scope: string;
         garmentIds: string[];
+        mode: string;
       };
     }
   }

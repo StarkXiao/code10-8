@@ -49,6 +49,7 @@ model Wardrobe {
   reminderRules ReminderRule[]
   reminders     Reminder[]
   shareLinks    ShareLink[]
+  submissions   RepairSubmission[]
   activityLogs  ActivityLog[]
 
   @@map("wardrobes")
@@ -112,6 +113,7 @@ model Garment {
   damageEvents  DamageEvent[]
   wearLogs      WearLog[]
   donorFor      FabricSource[]    @relation("DonorGarment")
+  submissions   RepairSubmission[]
 
   @@unique([wardrobeId, code])
   @@index([wardrobeId, status])
@@ -291,6 +293,7 @@ model DamageEvent {
   annotations  PhotoAnnotation[]
   original     DamageEvent?      @relation("Recurrence", fields: [recurrenceOf], references: [id])
   recurrences  DamageEvent[]     @relation("Recurrence")
+  submissions  RepairSubmission[]
 
   @@unique([garmentId, code])
   @@index([garmentId, status])
@@ -548,6 +551,8 @@ model ShareLink {
   tokenHash   String    @unique @map("token_hash")
   scope       String    @default("garment")
   garmentIds  Json
+  /** view=只读档案；collab=限时协作，持链接的师傅可回填修补用料与费用 */
+  mode        String    @default("view")
   expiresAt   DateTime  @map("expires_at")
   accessCount Int       @default(0) @map("access_count")
   lastAccessAt DateTime? @map("last_access_at")
@@ -555,10 +560,49 @@ model ShareLink {
   revokedAt   DateTime? @map("revoked_at")
   createdAt   DateTime  @default(now()) @map("created_at")
 
-  wardrobe Wardrobe @relation(fields: [wardrobeId], references: [id], onDelete: Cascade)
+  wardrobe    Wardrobe           @relation(fields: [wardrobeId], references: [id], onDelete: Cascade)
+  submissions RepairSubmission[]
 
   @@index([wardrobeId])
   @@map("share_links")
+}
+
+// ---------------------------------------------------------------- 协作回填
+
+/**
+ * 师傅凭限时协作链接回填的修补单。
+ * 师傅侧不直接写正式档案：落为 pending 单据，由衣橱主人审批通过后才并入 Repair 等正式表。
+ * payload 保留师傅提交原文；reviewNote/reviewedAt 保留主人的审批痕迹。
+ */
+model RepairSubmission {
+  id             String    @id @default(cuid())
+  shareLinkId    String    @map("share_link_id")
+  wardrobeId     String    @map("wardrobe_id")
+  garmentId      String    @map("garment_id")
+  damageEventId  String?   @map("damage_event_id")
+  status         String    @default("pending")
+  collaborator   String
+  contact        String?
+  payload        Json
+  ip             String?
+  userAgent      String?   @map("user_agent")
+  submittedAt    DateTime  @default(now()) @map("submitted_at")
+  reviewedBy     String?   @map("reviewed_by")
+  reviewedAt     DateTime? @map("reviewed_at")
+  reviewNote     String?   @map("review_note")
+  /** 审批通过后生成的正式修补记录 */
+  repairId       String?   @map("repair_id")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  shareLink ShareLink @relation(fields: [shareLinkId], references: [id], onDelete: Cascade)
+  wardrobe  Wardrobe  @relation(fields: [wardrobeId], references: [id], onDelete: Cascade)
+  garment   Garment   @relation(fields: [garmentId], references: [id], onDelete: Cascade)
+  damageEvent DamageEvent? @relation(fields: [damageEventId], references: [id], onDelete: SetNull)
+
+  @@index([wardrobeId, status])
+  @@index([shareLinkId])
+  @@map("repair_submissions")
 }
 
 model ActivityLog {

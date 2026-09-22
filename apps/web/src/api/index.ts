@@ -20,6 +20,8 @@ import type {
   RepairDetail,
   RepairListItem,
   ShareLinkRow,
+  SubmissionDetail,
+  SubmissionSummary,
   StitchEffectivenessResponse,
   TimelineEvent,
   User,
@@ -189,12 +191,55 @@ export const analyticsApi = {
 
 export const shareApi = {
   list: () => api.get<{ links: ShareLinkRow[] }>('/share-links'),
-  create: (body: { scope: string; garmentIds: string[]; expiresInHours?: number }) =>
-    api.post<{ id: string; token: string; url: string; expiresAt: string }>('/share-links', body),
+  create: (body: { scope: string; mode: string; garmentIds: string[]; expiresInHours?: number }) =>
+    api.post<{ id: string; token: string; url: string; expiresAt: string; mode: string }>('/share-links', body),
   revoke: (id: string) => api.del<{ revoked: boolean }>(`/share-links/${id}`),
+  submissions: (status?: string) =>
+    api.get<{ items: SubmissionSummary[] }>('/share-links/submissions', status ? { status } : undefined),
+  pendingSubmissions: () => api.get<{ items: SubmissionSummary[] }>('/share-links/submissions/pending'),
+  submissionDetail: (id: string) => api.get<SubmissionDetail>(`/share-links/submissions/${id}`),
+  approveSubmission: (
+    id: string,
+    body: {
+      damageEventId?: string;
+      stitchId: string;
+      stitchSecondaryIds?: string[];
+      materialDecisions?: Array<{ index: number; action: 'inventory' | 'shop_supplied' | 'skip'; fabricSourceId?: string }>;
+      note?: string | null;
+    },
+  ) => api.post<{ repairId: string; damageEventId: string; createdDamageId: string | null; round: number }>(`/share-links/submissions/${id}/approve`, body),
+  rejectSubmission: (id: string, reason: string) =>
+    api.post<{ rejected: boolean }>(`/share-links/submissions/${id}/reject`, { reason }),
   publicData: (token: string) =>
-    api.get<{ wardrobeName: string; scope: string; garments: Array<{ id: string; code: string; name: string }>; expiresAt: string }>(
-      `/share/${token}`,
-    ),
+    api.get<{
+      wardrobeName: string;
+      scope: string;
+      mode: string;
+      garments: Array<{ id: string; code: string; name: string; materialPrimary: string; status: string }>;
+      expiresAt: string;
+    }>(`/share/${token}`),
   publicGarment: (token: string, garmentId: string) => api.get<Record<string, unknown>>(`/share/${token}/garment/${garmentId}`),
+  collabDictionary: (token: string) =>
+    api.get<{
+      stitches: Array<{ code: string; name: string }>;
+      damageTypes: Array<{ code: string; name: string; defaultSeverity: string }>;
+      parts: Array<{ code: string; name: string }>;
+    }>(`/share/${token}/dictionary`),
+  submitCollab: (
+    token: string,
+    body: Record<string, unknown>,
+  ) => api.post<{ id: string; status: string }>(`/share/${token}/submissions`, body),
+  myCollabSubmissions: (token: string) =>
+    api.get<{
+      items: Array<{
+        id: string;
+        status: string;
+        collaborator: string;
+        garmentId: string;
+        submittedAt: string;
+        reviewedAt: string | null;
+        reviewNote: string | null;
+        laborCost: number | null;
+      }>;
+    }>(`/share/${token}/submissions`),
 };

@@ -1,7 +1,10 @@
-import { prisma, type Tx } from './prisma.js';
+import { prisma } from './prisma.js';
+import type { Prisma } from '@prisma/client';
+
+type DbClient = Prisma.TransactionClient | typeof prisma;
 
 /** 衣物编号：G-YYYY-0001（衣橱内递增，可打印贴在洗标上） */
-export async function nextGarmentCode(wardrobeId: string, client: Tx = prisma): Promise<string> {
+export async function nextGarmentCode(wardrobeId: string, client: DbClient = prisma): Promise<string> {
   const year = new Date().getUTCFullYear();
   const prefix = `G-${year}-`;
   const last = await client.garment.findFirst({
@@ -17,7 +20,7 @@ export async function nextGarmentCode(wardrobeId: string, client: Tx = prisma): 
 export async function nextDamageCode(
   garmentId: string,
   garmentCode: string,
-  client: Tx = prisma,
+  client: DbClient = prisma,
 ): Promise<string> {
   const count = await client.damageEvent.count({ where: { garmentId } });
   return `${garmentCode}-D${String(count + 1).padStart(2, '0')}`;

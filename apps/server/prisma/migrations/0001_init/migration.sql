@@ -418,6 +418,7 @@ CREATE TABLE "share_links" (
     "token_hash" TEXT NOT NULL,
     "scope" TEXT NOT NULL DEFAULT 'garment',
     "garmentIds" JSONB NOT NULL,
+    "mode" TEXT NOT NULL DEFAULT 'view',
     "expires_at" DATETIME NOT NULL,
     "access_count" INTEGER NOT NULL DEFAULT 0,
     "last_access_at" DATETIME,
@@ -425,6 +426,32 @@ CREATE TABLE "share_links" (
     "revoked_at" DATETIME,
     "created_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT "share_links_wardrobe_id_fkey" FOREIGN KEY ("wardrobe_id") REFERENCES "wardrobes" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+-- CreateTable
+CREATE TABLE "repair_submissions" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "share_link_id" TEXT NOT NULL,
+    "wardrobe_id" TEXT NOT NULL,
+    "garment_id" TEXT NOT NULL,
+    "damage_event_id" TEXT,
+    "status" TEXT NOT NULL DEFAULT 'pending',
+    "collaborator" TEXT NOT NULL,
+    "contact" TEXT,
+    "payload" JSONB NOT NULL,
+    "ip" TEXT,
+    "user_agent" TEXT,
+    "submitted_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "reviewed_by" TEXT,
+    "reviewed_at" DATETIME,
+    "review_note" TEXT,
+    "repair_id" TEXT,
+    "created_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" DATETIME NOT NULL,
+    CONSTRAINT "repair_submissions_share_link_id_fkey" FOREIGN KEY ("share_link_id") REFERENCES "share_links" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT "repair_submissions_wardrobe_id_fkey" FOREIGN KEY ("wardrobe_id") REFERENCES "wardrobes" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT "repair_submissions_garment_id_fkey" FOREIGN KEY ("garment_id") REFERENCES "garments" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT "repair_submissions_damage_event_id_fkey" FOREIGN KEY ("damage_event_id") REFERENCES "damage_events" ("id") ON DELETE SET NULL ON UPDATE CASCADE
 );
 
 -- CreateTable
@@ -554,6 +581,12 @@ CREATE UNIQUE INDEX "share_links_token_hash_key" ON "share_links"("token_hash");
 
 -- CreateIndex
 CREATE INDEX "share_links_wardrobe_id_idx" ON "share_links"("wardrobe_id");
+
+-- CreateIndex
+CREATE INDEX "repair_submissions_wardrobe_id_status_idx" ON "repair_submissions"("wardrobe_id", "status");
+
+-- CreateIndex
+CREATE INDEX "repair_submissions_share_link_id_idx" ON "repair_submissions"("share_link_id");
 
 -- CreateIndex
 CREATE INDEX "activity_logs_wardrobe_id_created_at_idx" ON "activity_logs"("wardrobe_id", "created_at");

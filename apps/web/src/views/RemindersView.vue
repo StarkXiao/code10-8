@@ -103,6 +103,10 @@ async function act(reminder: ReminderItem): Promise<void> {
     await router.push({ name: 'analytics' });
     return;
   }
+  if (reminder.actionKind === 'review_submission' && payload.submissionId) {
+    await router.push({ name: 'submission-review', params: { id: String(payload.submissionId) } });
+    return;
+  }
   if (payload.garmentId) {
     await router.push({ name: 'garment-detail', params: { id: String(payload.garmentId) } });
     return;

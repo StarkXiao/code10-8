@@ -240,13 +240,24 @@ activityRouter.get(
       orderBy: { createdAt: 'desc' },
       take: query.limit,
     });
-    const actors = await prisma.user.findMany({
-      where: { id: { in: [...new Set(logs.map((l) => l.actorId))] } },
-      select: { id: true, displayName: true },
-    });
+    const actorIds = [...new Set(logs.map((l) => l.actorId))];
+    const [actors, links] = await Promise.all([
+      prisma.user.findMany({
+        where: { id: { in: actorIds } },
+        select: { id: true, displayName: true },
+      }),
+      prisma.shareLink.findMany({
+        where: { id: { in: actorIds } },
+        select: { id: true, mode: true },
+      }),
+    ]);
     const actorMap = new Map(actors.map((a) => [a.id, a.displayName]));
+    const linkMap = new Map(links.map((l) => [l.id, l.mode === 'collab' ? '协作师傅（链接）' : '访客（分享链接）']));
     ok(req, res, {
-      logs: logs.map((l) => ({ ...l, actorName: actorMap.get(l.actorId) ?? '未知成员' })),
+      logs: logs.map((l) => ({
+        ...l,
+        actorName: actorMap.get(l.actorId) ?? linkMap.get(l.actorId) ?? '未知成员',
+      })),
     });
   }),
 );

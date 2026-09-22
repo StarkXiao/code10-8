@@ -575,9 +575,97 @@ export interface WardrobeOverviewResponse {
 export interface ShareLinkRow {
   id: string;
   scope: string;
+  mode: string;
   garmentIds: string[];
   expiresAt: string;
   accessCount: number;
   lastAccessAt: string | null;
+  pendingSubmissions: number;
   expired: boolean;
+}
+
+export interface CollabMaterial {
+  description: string;
+  amount: number;
+  unit: string;
+  unitCost?: number;
+}
+
+export interface CollabSubmissionPayload {
+  garmentId: string;
+  damageEventId?: string | null;
+  collaborator: string;
+  contact?: string | null;
+  newDamage?: {
+    damageTypeCode: string;
+    severity: string;
+    description: string;
+    partCode?: string | null;
+  } | null;
+  stitchCode: string;
+  stitchNameFallback?: string | null;
+  stitchSecondaryCodes: string[];
+  threadType?: string | null;
+  threadColor?: string | null;
+  durationMinutes?: number | null;
+  laborCost: number;
+  shopName?: string | null;
+  startedAt?: string | null;
+  finishedAt: string;
+  materials: CollabMaterial[];
+  materialTotalCost: number;
+  reuseOriginalFabric: boolean;
+  note?: string | null;
+}
+
+export interface SubmissionSummary {
+  id: string;
+  status: 'pending' | 'approved' | 'rejected';
+  collaborator: string;
+  garment: { id: string; code: string; name: string };
+  damageEvent: { id: string; code: string } | null;
+  newDamage: { damageTypeCode?: string; description?: string } | null;
+  laborCost: number | null;
+  materialTotalCost: number | null;
+  materialCount: number;
+  finishedAt: string | null;
+  submittedAt: string;
+  reviewedAt: string | null;
+  reviewNote: string | null;
+  repairId: string | null;
+}
+
+export interface SubmissionDetail {
+  submission: {
+    id: string;
+    status: 'pending' | 'approved' | 'rejected';
+    collaborator: string;
+    contact: string | null;
+    payload: CollabSubmissionPayload;
+    submittedAt: string;
+    reviewedAt: string | null;
+    reviewNote: string | null;
+    repairId: string | null;
+    ip: string | null;
+    userAgent: string | null;
+    garment: { id: string; code: string; name: string };
+    damageEvent: { id: string; code: string; damageType: string; part: string | null } | null;
+  };
+  candidates: {
+    damages: Array<{
+      id: string;
+      code: string;
+      damageType: string;
+      part: string | null;
+      status: string;
+      detectedAt: string;
+    }>;
+    stitches: Array<{ id: string; code: string; name: string }>;
+    fabricSources: Array<{
+      id: string;
+      name: string;
+      kind: string;
+      inventory: { unit: string; remainingAmount: number } | null;
+    }>;
+  };
 }
