@@ -21,8 +21,8 @@ const isPublicPage = computed(() => route.meta.public === true);
 const activeMenu = computed(() => {
   const name = String(route.name ?? '');
   if (name === 'annotate') return 'garments';
-  if (name === 'dashboard' || name === 'garments' || name === 'wear' || name === 'fabric' || name === 'reminders' || name === 'analytics' || name === 'settings') {
-    return name;
+  if (name === 'dashboard' || name === 'garments' || name === 'wear' || name === 'fabric' || name === 'reminders' || name === 'analytics' || name === 'settings' || name === 'share-intakes') {
+    return name === 'share-intakes' ? 'settings' : name;
   }
   return '';
 });

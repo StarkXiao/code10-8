@@ -241,11 +241,11 @@ export const REMINDER_STATUS_LABEL = labelMap(REMINDER_STATUSES, {
 });
 export const REMINDER_TERMINAL_STATUSES: ReminderStatus[] = ['done', 'dismissed', 'expired'];
 
-export const REMINDER_SUBJECT_TYPES = ['garment', 'damage_event', 'repair', 'fabric_inventory', 'wardrobe'] as const;
+export const REMINDER_SUBJECT_TYPES = ['garment', 'damage_event', 'repair', 'fabric_inventory', 'wardrobe', 'share_intake'] as const;
 export type ReminderSubjectType = (typeof REMINDER_SUBJECT_TYPES)[number];
 
 export const REMINDER_ACTION_KINDS = [
-  'open_garment', 'open_review_form', 'open_repair_rework', 'open_inventory', 'open_report',
+  'open_garment', 'open_review_form', 'open_repair_rework', 'open_inventory', 'open_report', 'open_share_intakes',
 ] as const;
 export type ReminderActionKind = (typeof REMINDER_ACTION_KINDS)[number];
 export const REMINDER_ACTION_KIND_LABEL = labelMap(REMINDER_ACTION_KINDS, {
@@ -254,6 +254,7 @@ export const REMINDER_ACTION_KIND_LABEL = labelMap(REMINDER_ACTION_KINDS, {
   open_repair_rework: '安排返工',
   open_inventory: '查看布料库存',
   open_report: '查看评估报告',
+  open_share_intakes: '确认协作回填',
 });
 
 export const DISMISS_REASONS = ['duplicate', 'not_applicable', 'handled_elsewhere', 'other'] as const;
@@ -268,7 +269,22 @@ export type ReminderChannel = (typeof REMINDER_CHANNELS)[number];
 export const SHARE_SCOPES = ['garment', 'wardrobe'] as const;
 export type ShareScope = (typeof SHARE_SCOPES)[number];
 
-export const ACTIVITY_ACTIONS = ['create', 'update', 'delete', 'status_change', 'export'] as const;
+export const SHARE_MODES = ['readonly', 'collaborate'] as const;
+export type ShareMode = (typeof SHARE_MODES)[number];
+export const SHARE_MODE_LABEL = labelMap(SHARE_MODES, {
+  readonly: '只读查看',
+  collaborate: '限时协作（师傅可回填）',
+});
+
+export const SHARE_INTAKE_STATUSES = ['pending', 'confirmed', 'rejected'] as const;
+export type ShareIntakeStatus = (typeof SHARE_INTAKE_STATUSES)[number];
+export const SHARE_INTAKE_STATUS_LABEL = labelMap(SHARE_INTAKE_STATUSES, {
+  pending: '待确认',
+  confirmed: '已并入档案',
+  rejected: '已驳回',
+});
+
+export const ACTIVITY_ACTIONS = ['create', 'update', 'delete', 'status_change', 'export', 'confirm', 'reject'] as const;
 export type ActivityAction = (typeof ACTIVITY_ACTIONS)[number];
 
 export const PART_CATEGORY_HINTS = ['garment', 'lower', 'accessory'] as const;

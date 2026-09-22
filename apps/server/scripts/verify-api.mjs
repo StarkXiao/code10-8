@@ -35,7 +35,41 @@ async function call(path, { method = 'GET', body, form, expect = 200, note = '' 
     json = null;
   }
   const okStatus = response.status === expect;
-  const okEnvelope = json === null || json.ok === true;
+  // 预期的 4xx/5xx 本来就返回 {ok:false,error} 信封，状态码对就算通过
+  const okEnvelope = json === null || json.ok === true || expect >= 400;
+  if (okStatus && okEnvelope) {
+    passed.push(`${method} ${path}${note ? ` · ${note}` : ''}`);
+  } else {
+    failures.push({
+      endpoint: `${method} ${path}`,
+      status: response.status,
+      expected: expect,
+      code: json?.error?.code,
+      message: json?.error?.message ?? text.slice(0, 120),
+    });
+  }
+  return json?.data;
+}
+
+/** 访客调用：不带登录 token（分享链接走自己的凭证） */
+async function callPublic(path, { method = 'GET', body, expect = 200, note = '' } = {}) {
+  const headers = {};
+  let payload;
+  if (body !== undefined) {
+    headers['content-type'] = 'application/json';
+    payload = JSON.stringify(body);
+  }
+  const response = await fetch(`${BASE}/api${path}`, { method, headers, body: payload });
+  const text = await response.text();
+  let json;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    json = null;
+  }
+  const okStatus = response.status === expect;
+  // 预期的 4xx/5xx 本来就返回 {ok:false,error} 信封，状态码对就算通过
+  const okEnvelope = json === null || json.ok === true || expect >= 400;
   if (okStatus && okEnvelope) {
     passed.push(`${method} ${path}${note ? ` · ${note}` : ''}`);
   } else {
@@ -177,6 +211,71 @@ const shareLink = await call('/share-links', {
   method: 'POST',
   expect: 201,
   body: { scope: 'garment', garmentIds: [garment.id], expiresInHours: 24 },
+});
+
+/* ---------- 限时协作：师傅回填 → 主人确认 ---------- */
+const collabDamage = (
+  await call('/damage-events', {
+    method: 'POST',
+    expect: 201,
+    body: {
+      garmentId: garment.id,
+      damageTypeId: dict.damageTypes.find((d) => d.code === 'seam_open').id,
+      severity: 'minor',
+      detectedAt: daysAgo(2),
+      locationUnknown: true,
+      locationNote: '接口扫描：后腰开线',
+    },
+  })
+).damage;
+
+const collabLink = await call('/share-links', {
+  method: 'POST',
+  expect: 201,
+  body: { scope: 'garment', garmentIds: [garment.id], expiresInHours: 24, mode: 'collaborate' },
+});
+
+await callPublic(`/share/${collabLink.token}`, { note: '协作链接（访客视角）' });
+await callPublic(`/share/${collabLink.token}/intakes`, { note: '访客查看回填记录' });
+
+// 只读链接提交回填必须被拒
+await callPublic(`/share/${shareLink.token}/intakes`, {
+  method: 'POST',
+  expect: 403,
+  body: { damageEventId: collabDamage.id, tailorName: '王师傅', finishedAt: iso(today) },
+  note: '只读链接不能回填',
+});
+
+const intake = (
+  await callPublic(`/share/${collabLink.token}/intakes`, {
+    method: 'POST',
+    expect: 201,
+    body: {
+      damageEventId: collabDamage.id,
+      tailorName: '接口扫描王师傅',
+      shopName: '巷口裁缝铺',
+      stitchId: dict.stitches.find((s) => s.code === 'overcast').id,
+      durationMinutes: 35,
+      cost: 20,
+      finishedAt: iso(today),
+      materials: [{ name: '扫描用余料', amount: 10, unit: 'cm' }],
+    },
+    note: '师傅提交回填单',
+  })
+).intake;
+
+await call('/share-links/intakes', { note: '回填队列（主人）' });
+await call(`/share-links/intakes/${intake.id}/confirm`, {
+  method: 'POST',
+  expect: 201,
+  body: { materialMappings: [{ index: 0, fabricSourceId: fabricSource.id }] },
+  note: '主人确认并入档案',
+});
+await call(`/share-links/intakes/${intake.id}/confirm`, {
+  method: 'POST',
+  expect: 409,
+  body: {},
+  note: '重复确认被拒绝',
 });
 
 const reminders = (await call('/reminders?scope=all&limit=50')).items;
@@ -365,6 +464,14 @@ if (openAfterScan.length > 0) {
 }
 
 await call(`/share-links/${shareLink.id}`, { method: 'DELETE', note: '撤销分享链接' });
+await call(`/share-links/${collabLink.id}`, { method: 'DELETE', note: '撤销协作链接' });
+// 撤销后访客再提交必须失效
+await callPublic(`/share/${collabLink.token}/intakes`, {
+  method: 'POST',
+  expect: 401,
+  body: { damageEventId: collabDamage.id, tailorName: '王师傅', finishedAt: iso(today) },
+  note: '撤销链接后回填被拒',
+});
 await call('/wear-logs/batch', {
   method: 'POST',
   body: { logs: [{ garmentId: garment.id, wornOn: daysAgo(1), clientOpId: 'verify-op-2' }] },

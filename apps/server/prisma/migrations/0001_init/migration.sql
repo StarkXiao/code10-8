@@ -417,6 +417,7 @@ CREATE TABLE "share_links" (
     "wardrobe_id" TEXT NOT NULL,
     "token_hash" TEXT NOT NULL,
     "scope" TEXT NOT NULL DEFAULT 'garment',
+    "mode" TEXT NOT NULL DEFAULT 'readonly',
     "garmentIds" JSONB NOT NULL,
     "expires_at" DATETIME NOT NULL,
     "access_count" INTEGER NOT NULL DEFAULT 0,
@@ -425,6 +426,38 @@ CREATE TABLE "share_links" (
     "revoked_at" DATETIME,
     "created_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT "share_links_wardrobe_id_fkey" FOREIGN KEY ("wardrobe_id") REFERENCES "wardrobes" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+-- CreateTable
+CREATE TABLE "share_intakes" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "share_link_id" TEXT NOT NULL,
+    "wardrobe_id" TEXT NOT NULL,
+    "garment_id" TEXT NOT NULL,
+    "damage_event_id" TEXT NOT NULL,
+    "tailor_name" TEXT NOT NULL,
+    "shop_name" TEXT,
+    "stitch_id" TEXT,
+    "thread_type" TEXT,
+    "thread_color" TEXT,
+    "duration_minutes" INTEGER,
+    "cost" DECIMAL,
+    "materials" JSONB NOT NULL,
+    "started_at" DATETIME,
+    "finished_at" DATETIME NOT NULL,
+    "note" TEXT,
+    "status" TEXT NOT NULL DEFAULT 'pending',
+    "repair_id" TEXT,
+    "review_note" TEXT,
+    "reviewed_by" TEXT,
+    "reviewed_at" DATETIME,
+    "submitted_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "share_intakes_share_link_id_fkey" FOREIGN KEY ("share_link_id") REFERENCES "share_links" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT "share_intakes_wardrobe_id_fkey" FOREIGN KEY ("wardrobe_id") REFERENCES "wardrobes" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT "share_intakes_garment_id_fkey" FOREIGN KEY ("garment_id") REFERENCES "garments" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT "share_intakes_damage_event_id_fkey" FOREIGN KEY ("damage_event_id") REFERENCES "damage_events" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT "share_intakes_stitch_id_fkey" FOREIGN KEY ("stitch_id") REFERENCES "stitches" ("id") ON DELETE SET NULL ON UPDATE CASCADE,
+    CONSTRAINT "share_intakes_repair_id_fkey" FOREIGN KEY ("repair_id") REFERENCES "repairs" ("id") ON DELETE SET NULL ON UPDATE CASCADE
 );
 
 -- CreateTable
@@ -554,6 +587,15 @@ CREATE UNIQUE INDEX "share_links_token_hash_key" ON "share_links"("token_hash");
 
 -- CreateIndex
 CREATE INDEX "share_links_wardrobe_id_idx" ON "share_links"("wardrobe_id");
+
+-- CreateIndex
+CREATE INDEX "share_intakes_wardrobe_id_status_idx" ON "share_intakes"("wardrobe_id", "status");
+
+-- CreateIndex
+CREATE INDEX "share_intakes_share_link_id_idx" ON "share_intakes"("share_link_id");
+
+-- CreateIndex
+CREATE INDEX "share_intakes_damage_event_id_idx" ON "share_intakes"("damage_event_id");
 
 -- CreateIndex
 CREATE INDEX "activity_logs_wardrobe_id_created_at_idx" ON "activity_logs"("wardrobe_id", "created_at");

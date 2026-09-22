@@ -25,6 +25,7 @@ import {
   RESULT_RATINGS,
   SEASONS,
   SEVERITIES,
+  SHARE_MODES,
   STITCH_CODES,
   STIFFNESS,
   VERDICTS,
@@ -406,6 +407,55 @@ export const shareLinkSchema = z.object({
   scope: z.enum(['garment', 'wardrobe']).default('garment'),
   garmentIds: z.array(z.string().min(1)).default([]),
   expiresInHours: z.number().int().min(1).max(24 * 365).optional(),
+  /** readonly=只读；collaborate=限时协作，访客可在有效期内回填用料与费用 */
+  mode: z.enum(SHARE_MODES).default('readonly'),
+});
+
+/**
+ * 师傅填报的一行用料：自由文本 + 可选数量。
+ * 主人确认时可以把某一行映射到库存布料（扣减库存），没映射的行原样写进补缀备注。
+ */
+export const shareIntakeMaterialSchema = z.object({
+  name: z.string().min(1, '请填写用料名称').max(60),
+  amount: z.number().positive('用量要大于 0').max(100_000).nullable().optional(),
+  unit: z.enum(INVENTORY_UNITS).nullable().optional(),
+  note: z.string().max(120).nullable().optional(),
+});
+
+/** 访客（师傅）通过协作链接提交的回填单 */
+export const shareIntakeCreateSchema = z.object({
+  damageEventId: z.string().min(1),
+  tailorName: z.string().min(1, '请填写师傅称呼').max(40),
+  shopName: z.string().max(60).nullable().optional(),
+  stitchId: z.string().min(1).nullable().optional(),
+  threadType: z.string().max(40).nullable().optional(),
+  threadColor: z.string().max(30).nullable().optional(),
+  durationMinutes: z.number().int().min(0).max(10_000).nullable().optional(),
+  cost: z.number().min(0).max(1_000_000).nullable().optional(),
+  materials: z.array(shareIntakeMaterialSchema).max(20).default([]),
+  startedAt: isoDate.nullable().optional(),
+  finishedAt: notTooFarInFuture(),
+  note: z.string().max(500).nullable().optional(),
+});
+
+/**
+ * 主人确认回填：未提供的字段沿用师傅填报值；
+ * cost 传 null 表示明确"无费用"，传数字覆盖填报值。
+ */
+export const shareIntakeConfirmSchema = z.object({
+  stitchId: z.string().min(1).nullable().optional(),
+  shopName: z.string().max(60).nullable().optional(),
+  cost: z.number().min(0).max(1_000_000).nullable().optional(),
+  observationDays: z.number().int().min(1).max(90).optional(),
+  materialMappings: z
+    .array(z.object({ index: z.number().int().min(0), fabricSourceId: z.string().min(1) }))
+    .max(20)
+    .default([]),
+  note: z.string().max(500).nullable().optional(),
+});
+
+export const shareIntakeRejectSchema = z.object({
+  note: z.string().min(1, '驳回时请填写原因，师傅修正后才能重新提交').max(300),
 });
 
 export const stitchCreateSchema = z.object({

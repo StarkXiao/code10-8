@@ -245,8 +245,11 @@ activityRouter.get(
       select: { id: true, displayName: true },
     });
     const actorMap = new Map(actors.map((a) => [a.id, a.displayName]));
+    // 协作回填的访客没有账号，actorId 形如 share:<linkId>，在日志里标注来源
+    const actorName = (actorId: string) =>
+      actorMap.get(actorId) ?? (actorId.startsWith('share:') ? '访客·分享链接' : '未知成员');
     ok(req, res, {
-      logs: logs.map((l) => ({ ...l, actorName: actorMap.get(l.actorId) ?? '未知成员' })),
+      logs: logs.map((l) => ({ ...l, actorName: actorName(l.actorId) })),
     });
   }),
 );

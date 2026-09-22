@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue';
+import { useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import {
   MATERIAL_PRIMARY_LABEL,
@@ -16,6 +17,7 @@ import type { DictionaryResponse, GarmentListItem, ReminderRuleRow, ShareLinkRow
 import EmptyState from '../components/EmptyState.vue';
 
 const session = useSessionStore();
+const router = useRouter();
 const tab = ref('account');
 const dict = ref<DictionaryResponse | null>(null);
 const rules = ref<ReminderRuleRow[]>([]);
@@ -34,7 +36,7 @@ const newRule = reactive({
   message: '换季前检查亚麻衣物的缝合处与前襟折痕',
   channel: 'inapp' as ReminderChannel,
 });
-const shareForm = reactive({ garmentIds: [] as string[], expiresInHours: 72 });
+const shareForm = reactive({ garmentIds: [] as string[], expiresInHours: 72, mode: 'readonly' });
 
 const currentUserId = computed(() => session.user?.id ?? '');
 
@@ -151,10 +153,11 @@ async function createShareLink(): Promise<void> {
       scope: 'garment',
       garmentIds: shareForm.garmentIds,
       expiresInHours: shareForm.expiresInHours,
+      mode: shareForm.mode,
     });
     try {
       await navigator.clipboard.writeText(result.url);
-      ElMessage.success('已生成只读链接并复制到剪贴板');
+      ElMessage.success(shareForm.mode === 'collaborate' ? '已生成限时协作链接并复制到剪贴板' : '已生成只读链接并复制到剪贴板');
     } catch {
       ElMessage.success(`链接：${result.url}`);
     }
@@ -339,23 +342,52 @@ async function importBackup(event: Event): Promise<void> {
 
       <el-tab-pane label="分享" name="share">
         <el-card shadow="never" style="max-width: 720px">
-          <template #header>生成只读分享链接（给裁缝 / 干洗店 / 家人）</template>
+          <template #header>
+            <div style="display: flex; justify-content: space-between; align-items: center">
+              <span>生成分享链接（给裁缝 / 干洗店 / 家人）</span>
+              <el-button
+                v-if="links.some((l) => l.pendingIntakes > 0)"
+                type="primary"
+                size="small"
+                @click="router.push({ name: 'share-intakes' })"
+              >
+                {{ links.reduce((sum, l) => sum + l.pendingIntakes, 0) }} 条回填待确认
+              </el-button>
+            </div>
+          </template>
           <el-form label-width="110px">
             <el-form-item label="衣物范围">
               <el-select v-model="shareForm.garmentIds" multiple filterable style="width: 100%" placeholder="选择要分享的衣物">
                 <el-option v-for="item in garments" :key="item.id" :value="item.id" :label="`${item.name}（${item.code}）`" />
               </el-select>
             </el-form-item>
+            <el-form-item label="权限">
+              <el-radio-group v-model="shareForm.mode">
+                <el-radio label="readonly">只读查看</el-radio>
+                <el-radio label="collaborate">限时协作</el-radio>
+              </el-radio-group>
+              <div class="field-hint">
+                只读：对方只能查看档案（不含成本与收纳位置）；限时协作：师傅可在有效期内回填用料与费用，需你确认后才并入档案
+              </div>
+            </el-form-item>
             <el-form-item label="有效期(小时)">
               <el-input-number v-model="shareForm.expiresInHours" :min="1" :max="8760" />
             </el-form-item>
             <el-form-item>
               <el-button type="primary" @click="createShareLink">生成并复制链接</el-button>
+              <el-button @click="router.push({ name: 'share-intakes' })">查看回填记录</el-button>
             </el-form-item>
           </el-form>
           <el-divider />
           <EmptyState v-if="links.length === 0" title="还没有分享链接" />
           <el-table v-else :data="links" size="small">
+            <el-table-column label="权限" width="100">
+              <template #default="{ row }">
+                <el-tag size="small" :type="row.mode === 'collaborate' ? 'warning' : 'info'">
+                  {{ row.mode === 'collaborate' ? '限时协作' : '只读' }}
+                </el-tag>
+              </template>
+            </el-table-column>
             <el-table-column label="范围" width="110">
               <template #default="{ row }">
                 {{ row.scope === 'wardrobe' ? '整个衣橱' : `${row.garmentIds.length} 件衣物` }}
@@ -364,8 +396,16 @@ async function importBackup(event: Event): Promise<void> {
             <el-table-column label="过期时间" width="180">
               <template #default="{ row }">{{ String(row.expiresAt).slice(0, 16).replace('T', ' ') }}</template>
             </el-table-column>
-            <el-table-column label="访问次数" width="100" prop="accessCount" />
-            <el-table-column label="状态" width="100">
+            <el-table-column label="访问" width="80" prop="accessCount" />
+            <el-table-column label="待确认" width="80">
+              <template #default="{ row }">
+                <el-button v-if="row.pendingIntakes > 0" link type="primary" @click="router.push({ name: 'share-intakes' })">
+                  {{ row.pendingIntakes }}
+                </el-button>
+                <span v-else class="muted">0</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="状态" width="90">
               <template #default="{ row }">
                 <el-tag size="small" :type="row.expired ? 'info' : 'success'">{{ row.expired ? '已过期' : '有效' }}</el-tag>
               </template>

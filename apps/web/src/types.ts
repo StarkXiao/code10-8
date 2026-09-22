@@ -575,9 +575,46 @@ export interface WardrobeOverviewResponse {
 export interface ShareLinkRow {
   id: string;
   scope: string;
+  mode: string;
   garmentIds: string[];
   expiresAt: string;
   accessCount: number;
   lastAccessAt: string | null;
   expired: boolean;
+  pendingIntakes: number;
+}
+
+export interface ShareIntakeMaterial {
+  name: string;
+  amount?: number | null;
+  unit?: string | null;
+  note?: string | null;
+}
+
+export interface ShareIntakeRow {
+  id: string;
+  shareLinkId: string;
+  garmentId: string;
+  damageEventId: string;
+  tailorName: string;
+  shopName: string | null;
+  stitchId: string | null;
+  stitchName: string | null;
+  threadType: string | null;
+  threadColor: string | null;
+  durationMinutes: number | null;
+  cost: string | null;
+  materials: ShareIntakeMaterial[];
+  startedAt: string | null;
+  finishedAt: string;
+  note: string | null;
+  status: string;
+  repairId: string | null;
+  reviewNote: string | null;
+  reviewedAt: string | null;
+  submittedAt: string;
+  garmentName: string;
+  garmentCode: string;
+  damageCode: string;
+  damageTypeName: string;
 }

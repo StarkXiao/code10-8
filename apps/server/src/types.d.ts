@@ -12,6 +12,7 @@ declare global {
         shareLinkId: string;
         wardrobeId: string;
         scope: string;
+        mode: string;
         garmentIds: string[];
       };
     }

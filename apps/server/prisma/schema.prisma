@@ -49,6 +49,7 @@ model Wardrobe {
   reminderRules ReminderRule[]
   reminders     Reminder[]
   shareLinks    ShareLink[]
+  shareIntakes  ShareIntake[]
   activityLogs  ActivityLog[]
 
   @@map("wardrobes")
@@ -112,6 +113,7 @@ model Garment {
   damageEvents  DamageEvent[]
   wearLogs      WearLog[]
   donorFor      FabricSource[]    @relation("DonorGarment")
+  shareIntakes  ShareIntake[]
 
   @@unique([wardrobeId, code])
   @@index([wardrobeId, status])
@@ -227,6 +229,7 @@ model Stitch {
   createdAt           DateTime @default(now()) @map("created_at")
 
   repairs Repair[]
+  shareIntakes ShareIntake[]
 
   @@map("stitches")
 }
@@ -289,6 +292,7 @@ model DamageEvent {
   part         Part?             @relation(fields: [partId], references: [id])
   repairs      Repair[]
   annotations  PhotoAnnotation[]
+  shareIntakes ShareIntake[]
   original     DamageEvent?      @relation("Recurrence", fields: [recurrenceOf], references: [id])
   recurrences  DamageEvent[]     @relation("Recurrence")
 
@@ -331,6 +335,7 @@ model Repair {
   reviews     ReviewResult[]
   txns        InventoryTxn[]
   annotations PhotoAnnotation[]
+  shareIntakes ShareIntake[]
 
   @@unique([damageEventId, round])
   @@index([status, observationUntil])
@@ -547,6 +552,8 @@ model ShareLink {
   wardrobeId  String    @map("wardrobe_id")
   tokenHash   String    @unique @map("token_hash")
   scope       String    @default("garment")
+  /** readonly=只读；collaborate=限时协作（访客可提交回填单） */
+  mode        String    @default("readonly")
   garmentIds  Json
   expiresAt   DateTime  @map("expires_at")
   accessCount Int       @default(0) @map("access_count")
@@ -555,10 +562,52 @@ model ShareLink {
   revokedAt   DateTime? @map("revoked_at")
   createdAt   DateTime  @default(now()) @map("created_at")
 
-  wardrobe Wardrobe @relation(fields: [wardrobeId], references: [id], onDelete: Cascade)
+  wardrobe Wardrobe     @relation(fields: [wardrobeId], references: [id], onDelete: Cascade)
+  intakes  ShareIntake[]
 
   @@index([wardrobeId])
   @@map("share_links")
+}
+
+/**
+ * 协作回填单：师傅凭限时协作链接填报的「用料 + 费用」，
+ * 衣橱主人确认后生成正式 Repair 并入档案；单据本身永不删除，作为操作痕迹保留。
+ */
+model ShareIntake {
+  id              String    @id @default(cuid())
+  shareLinkId     String    @map("share_link_id")
+  wardrobeId      String    @map("wardrobe_id")
+  garmentId       String    @map("garment_id")
+  damageEventId   String    @map("damage_event_id")
+  tailorName      String    @map("tailor_name")
+  shopName        String?   @map("shop_name")
+  stitchId        String?   @map("stitch_id")
+  threadType      String?   @map("thread_type")
+  threadColor     String?   @map("thread_color")
+  durationMinutes Int?      @map("duration_minutes")
+  cost            Decimal?
+  materials       Json
+  startedAt       DateTime? @map("started_at")
+  finishedAt      DateTime  @map("finished_at")
+  note            String?
+  status          String    @default("pending")
+  repairId        String?   @map("repair_id")
+  reviewNote      String?   @map("review_note")
+  reviewedBy      String?   @map("reviewed_by")
+  reviewedAt      DateTime? @map("reviewed_at")
+  submittedAt     DateTime  @default(now()) @map("submitted_at")
+
+  shareLink   ShareLink   @relation(fields: [shareLinkId], references: [id], onDelete: Cascade)
+  wardrobe    Wardrobe    @relation(fields: [wardrobeId], references: [id], onDelete: Cascade)
+  garment     Garment     @relation(fields: [garmentId], references: [id], onDelete: Cascade)
+  damageEvent DamageEvent @relation(fields: [damageEventId], references: [id], onDelete: Cascade)
+  stitch      Stitch?     @relation(fields: [stitchId], references: [id])
+  repair      Repair?     @relation(fields: [repairId], references: [id])
+
+  @@index([wardrobeId, status])
+  @@index([shareLinkId])
+  @@index([damageEventId])
+  @@map("share_intakes")
 }
 
 model ActivityLog {

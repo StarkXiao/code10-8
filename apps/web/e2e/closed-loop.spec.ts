@@ -241,7 +241,7 @@ test.describe('衣物修补日志 · 主链路', () => {
     await page.goto('/settings');
     for (const [tabName, marker] of [
       ['提醒规则', '规则列表'],
-      ['分享', '生成只读分享链接'],
+      ['分享', '生成分享链接'],
       ['字典', '针法库'],
       ['数据与审计', '导出与备份'],
     ] as Array<[string, string]>) {
@@ -291,6 +291,92 @@ test.describe('衣物修补日志 · 主链路', () => {
       .poll(async () => photo.evaluate((element) => (element as HTMLImageElement).naturalWidth))
       .toBeGreaterThan(0);
     await guestContext.close();
+  });
+
+  test('限时协作链接：师傅回填用料费用 → 主人确认并入档案', async ({ page, context }) => {
+    await register(page, uniqueEmail());
+    const garmentId = await createGarment(page, '协作测试西装');
+
+    // 经 API 造一条待修破损（UI 流程需要先标记照片，这里只关心协作链路）
+    const dict = await page.evaluate(async () => {
+      const response = await fetch('/api/dictionary', {
+        headers: { authorization: `Bearer ${localStorage.getItem('gml.token')}` },
+      });
+      return (await response.json()).data as { damageTypes: Array<{ code: string; id: string }> };
+    });
+    await page.evaluate(
+      async ({ garmentId, damageTypeId }) => {
+        const response = await fetch('/api/damage-events', {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            authorization: `Bearer ${localStorage.getItem('gml.token')}`,
+          },
+          body: JSON.stringify({
+            garmentId,
+            damageTypeId,
+            severity: 'minor',
+            detectedAt: new Date().toISOString().slice(0, 10),
+            locationUnknown: true,
+            locationNote: '袖口内衬开线',
+          }),
+        });
+        if (!response.ok) throw new Error(`造破损失败：${await response.text()}`);
+      },
+      { garmentId, damageTypeId: dict.damageTypes.find((d) => d.code === 'seam_open')!.id },
+    );
+
+    // 生成「限时协作」链接
+    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+    await page.goto('/settings');
+    await page.getByRole('tab', { name: '分享' }).click();
+    await page.locator('.el-select').filter({ hasText: '选择要分享的衣物' }).first().click();
+    await page.locator('.el-select-dropdown__item').filter({ hasText: '协作测试西装' }).first().click();
+    await page.keyboard.press('Escape');
+    await page.getByRole('radio', { name: '限时协作' }).click();
+    await page.getByRole('button', { name: '生成并复制链接' }).click();
+    await expect(page.getByText(/已生成限时协作链接/u)).toBeVisible();
+    const shareUrl = await page.evaluate(() => navigator.clipboard.readText());
+
+    // 访客（师傅）打开链接并回填
+    const guestContext = await context.browser()!.newContext({ locale: 'zh-CN' });
+    const guest = await guestContext.newPage();
+    await guest.goto(shareUrl);
+    await expect(guest.getByText('限时协作档案')).toBeVisible();
+    await guest.getByRole('button', { name: '回填本次修补的用料与费用' }).click();
+
+    await guest.getByLabel('师傅称呼').fill('赵师傅');
+    await guest.getByLabel('费用(元)').fill('30');
+    await guest.getByRole('button', { name: '+ 添加一行用料' }).click();
+    await guest.getByPlaceholder('用料名称（布/线/配件）').fill('同色涤纶线');
+    await guest.getByPlaceholder('数量').fill('1');
+    await guest.getByRole('button', { name: '提交回填' }).click();
+    await expect(guest.getByText('已提交，等待衣橱主人确认后并入档案')).toBeVisible();
+    await expect(guest.getByText('我提交过的回填')).toBeVisible();
+    await expect(guest.locator('.el-timeline-item').first()).toContainText('赵师傅');
+    await guestContext.close();
+
+    // 主人侧：待确认提醒进入回填审核页
+    await page.goto('/share-intakes');
+    await expect(page.getByText('赵师傅')).toBeVisible();
+    await page.getByRole('button', { name: '确认并入' }).click();
+    await expect(page.getByRole('dialog')).toBeVisible();
+    // 师傅没选针法，由主人补选后才能并入
+    await page.getByRole('button', { name: '确认并入档案' }).click();
+    await expect(page.getByText('请选择针法')).toBeVisible();
+    await page.locator('.el-dialog .el-select').first().click();
+    await page.locator('.el-select-dropdown__item').first().click();
+    await page.getByRole('button', { name: '确认并入档案' }).click();
+    await expect(page.getByText('已并入档案')).toBeVisible();
+    // 弹窗询问是否去填写修补后变化，选稍后
+    await page.getByRole('button', { name: '稍后' }).click();
+
+    // 列表应显示「已并入档案」，并能跳到正式修补记录
+    await expect(page.getByText('已并入档案')).toBeVisible();
+    await page.getByRole('button', { name: '查看修补记录' }).first().click();
+    await expect(page).toHaveURL(/\/repairs\//u);
+    // 未映射库存的用料按设计写进补缀备注，不会丢
+    await expect(page.locator('body')).toContainText('同色涤纶线');
   });
 
   test('断网打点：先入离线队列，恢复网络后自动同步', async ({ page, context }) => {

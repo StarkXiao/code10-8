@@ -19,6 +19,8 @@ import type {
   ReminderSummary,
   RepairDetail,
   RepairListItem,
+  ShareIntakeMaterial,
+  ShareIntakeRow,
   ShareLinkRow,
   StitchEffectivenessResponse,
   TimelineEvent,
@@ -189,12 +191,49 @@ export const analyticsApi = {
 
 export const shareApi = {
   list: () => api.get<{ links: ShareLinkRow[] }>('/share-links'),
-  create: (body: { scope: string; garmentIds: string[]; expiresInHours?: number }) =>
-    api.post<{ id: string; token: string; url: string; expiresAt: string }>('/share-links', body),
+  create: (body: { scope: string; garmentIds: string[]; expiresInHours?: number; mode?: string }) =>
+    api.post<{ id: string; token: string; url: string; expiresAt: string; mode: string }>('/share-links', body),
   revoke: (id: string) => api.del<{ revoked: boolean }>(`/share-links/${id}`),
+  intakes: (params?: { status?: string }) => api.get<{ intakes: ShareIntakeRow[] }>('/share-links/intakes', params),
+  confirmIntake: (
+    id: string,
+    body: {
+      stitchId?: string | null;
+      shopName?: string | null;
+      cost?: number | null;
+      observationDays?: number;
+      materialMappings?: Array<{ index: number; fabricSourceId: string }>;
+      note?: string | null;
+    },
+  ) => api.post<{ repair: { id: string }; intakeId: string; nextStep: string }>(`/share-links/intakes/${id}/confirm`, body),
+  rejectIntake: (id: string, body: { note: string }) =>
+    api.post<{ rejected: boolean }>(`/share-links/intakes/${id}/reject`, body),
   publicData: (token: string) =>
-    api.get<{ wardrobeName: string; scope: string; garments: Array<{ id: string; code: string; name: string }>; expiresAt: string }>(
-      `/share/${token}`,
-    ),
+    api.get<{
+      wardrobeName: string;
+      scope: string;
+      mode: string;
+      garments: Array<{ id: string; code: string; name: string }>;
+      expiresAt: string;
+      stitches: Array<{ id: string; name: string }>;
+    }>(`/share/${token}`),
   publicGarment: (token: string, garmentId: string) => api.get<Record<string, unknown>>(`/share/${token}/garment/${garmentId}`),
+  publicIntakes: (token: string) => api.get<{ intakes: ShareIntakeRow[] }>(`/share/${token}/intakes`),
+  submitIntake: (
+    token: string,
+    body: {
+      damageEventId: string;
+      tailorName: string;
+      shopName?: string | null;
+      stitchId?: string | null;
+      threadType?: string | null;
+      threadColor?: string | null;
+      durationMinutes?: number | null;
+      cost?: number | null;
+      materials?: ShareIntakeMaterial[];
+      startedAt?: string | null;
+      finishedAt: string;
+      note?: string | null;
+    },
+  ) => api.post<{ intake: { id: string; status: string }; nextStep: string }>(`/share/${token}/intakes`, body),
 };

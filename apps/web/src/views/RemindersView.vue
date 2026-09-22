@@ -103,6 +103,10 @@ async function act(reminder: ReminderItem): Promise<void> {
     await router.push({ name: 'analytics' });
     return;
   }
+  if (reminder.actionKind === 'open_share_intakes') {
+    await router.push({ name: 'share-intakes' });
+    return;
+  }
   if (payload.garmentId) {
     await router.push({ name: 'garment-detail', params: { id: String(payload.garmentId) } });
     return;

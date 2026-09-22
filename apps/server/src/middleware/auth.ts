@@ -59,6 +59,7 @@ export function requireShareToken(req: Request, _res: Response, next: NextFuncti
       shareLinkId: link.id,
       wardrobeId: link.wardrobeId,
       scope: link.scope,
+      mode: link.mode,
       garmentIds: Array.isArray(link.garmentIds) ? (link.garmentIds as string[]) : [],
     };
     next();
